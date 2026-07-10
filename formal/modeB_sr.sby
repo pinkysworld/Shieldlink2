@@ -1,0 +1,15 @@
+[options]
+mode prove
+depth 20
+multiclock on
+
+[engines]
+smtbmc boolector
+
+[script]
+read -formal -D FORMAL rtl/shieldlink_ctrl_modeB_sr.sv formal/modeB_sr_formal.sv
+prep -top modeB_sr_formal
+
+[files]
+rtl/shieldlink_ctrl_modeB_sr.sv
+formal/modeB_sr_formal.sv

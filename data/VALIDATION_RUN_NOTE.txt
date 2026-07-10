@@ -1,0 +1,16 @@
+Validation data generated locally on 2026-07-10 with Python 3.13.5.
+
+Commands:
+python3 code/protocol_realism_experiments.py --out-dir data --epochs 300 --seeds 20
+PYTHONPATH=code python3 code/baseline_comparison.py --out data/baseline_comparison.csv --epochs 300 --seeds 20
+PYTHONPATH=code python3 code/adaptive_policy_ablation.py --out-dir data --seeds 20
+python3 code/trace_replay_experiments.py --trace traces/synthetic_mixed_workload.csv --out data/trace_replay_summary.csv --seeds 20
+PYTHONPATH=code python3 code/test_models.py -v
+python3 code/validate_results.py --data-dir data
+python3 code/make_validation_plots.py --data-dir data --fig-dir figures
+
+The protocol model was rerun after separating delivered goodput from offered efficiency. Security-dropped epochs and frames are therefore excluded from delivered goodput. A compact delivery-aware subset is checked in as data/protocol_realism_key_results.csv; the full per-seed and aggregate CSVs are reproducible from the script.
+
+The trace replay was rerun after enforcing a single link serializer and splitting transactions that exceed one epoch. The cross-result semantic and physical invariant checker reported PASS locally.
+
+All Python unit tests passed. Local Yosys, Icarus Verilog, Verilator, and nextpnr binaries were unavailable, so HDL lint, simulation, synthesis, nextpnr timing, and SAT-formal outputs are delegated to the GitHub Actions workflow and are not claimed as locally executed results.
