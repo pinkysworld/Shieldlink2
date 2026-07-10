@@ -95,7 +95,7 @@ def run_mode_b(*,epochs,m,pi_bad,beta,p_bad,seed,selective,workload,timeout_cycl
         else:
             delivered+=epoch_payload; wire+=ACK_BYTES; serial+=ACK_BYTES/LINK_BYTES_PER_CYCLE; lat+=ctrl_cycles(ACK_BYTES)
         lats.append(lat); rounds.append(rr); repairs.append(rf)
-    elapsed=max(serial/max(1,pipeline_depth)+epochs*(AEAD_CYCLES+PROP_CYCLES)/max(1,pipeline_depth),max(lats,default=0.0))
+    elapsed=max(serial+epochs*(AEAD_CYCLES+PROP_CYCLES)/max(1,pipeline_depth),max(lats,default=0.0))
     return RunResult(offered,delivered,wire,elapsed,lats,rounds,repairs,security_drops,rejected_frames)
 
 def run_mode_a(*,frames,pi_bad,beta,p_bad,seed,workload,timeout_cycles,adversary='none',fec_t=0):
