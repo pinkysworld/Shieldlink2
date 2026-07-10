@@ -50,6 +50,8 @@ module shieldlink_ctrl_modeB_sr #(
     logic epoch_active;
     logic epoch_complete;
     logic epoch_clean;
+    logic commit_condition;
+    logic drop_condition;
 
     always_comb begin
         active_epoch_start = epoch_active ? epoch_start_seq : next_expected;
@@ -59,6 +61,8 @@ module shieldlink_ctrl_modeB_sr #(
         repair_bitmap = (~received_bitmap) | crc_fail_bitmap;
         epoch_complete = (&received_bitmap);
         epoch_clean = (crc_fail_bitmap == '0);
+        commit_condition = epoch_active && epoch_tag_valid && epoch_complete && epoch_clean && epoch_aead_ok;
+        drop_condition = epoch_active && epoch_tag_valid && epoch_complete && epoch_clean && !epoch_aead_ok;
     end
 
     always_ff @(posedge clk or negedge rst_n) begin
@@ -112,13 +116,13 @@ module shieldlink_ctrl_modeB_sr #(
                 // epoch_tag_valid is expected after the candidate epoch or repair
                 // round has been registered.
                 if (epoch_tag_valid) begin
-                    if (epoch_complete && epoch_clean && epoch_aead_ok) begin
+                    if (commit_condition) begin
                         next_expected <= epoch_start_seq + M;
                         ack_valid <= 1'b1;
                         ack_seq <= epoch_start_seq + M;
                         epoch_commit_pulse <= 1'b1;
                         epoch_active <= 1'b0;
-                    end else if (epoch_complete && epoch_clean && !epoch_aead_ok) begin
+                    end else if (drop_condition) begin
                         security_drop_pulse <= 1'b1;
                         epoch_active <= 1'b0;
                     end else begin
@@ -133,10 +137,17 @@ module shieldlink_ctrl_modeB_sr #(
     end
 
 `ifdef FORMAL
-    // Two-cycle warm-up ensures every $past() sample below is defined after reset.
+    // Registered decision witnesses avoid ambiguous sampling of same-edge inputs.
     logic [1:0] f_history_valid = '0;
+    logic [SEQ_W-1:0] f_prev_next_expected = '0;
+    logic f_prev_commit_condition = 1'b0;
+    logic f_prev_drop_condition = 1'b0;
+
     always_ff @(posedge clk) begin
         f_history_valid <= {f_history_valid[0], 1'b1};
+        f_prev_next_expected <= next_expected;
+        f_prev_commit_condition <= commit_condition;
+        f_prev_drop_condition <= drop_condition;
 
         if (!f_history_valid[0]) begin
             assume(!rst_n);
@@ -149,28 +160,22 @@ module shieldlink_ctrl_modeB_sr #(
             a_no_ack_security_overlap: assert(!(ack_valid && security_drop_pulse));
             a_no_commit_repair_overlap: assert(!(epoch_commit_pulse && epoch_repair_pulse));
             a_ack_is_commit: assert(ack_valid == epoch_commit_pulse);
+            a_ack_exactly_authorized: assert(ack_valid == f_prev_commit_condition);
+            a_drop_exactly_authorized: assert(security_drop_pulse == f_prev_drop_condition);
 
             if (ack_valid) begin
-                a_ack_requires_tag: assert($past(epoch_tag_valid));
-                a_ack_requires_aead: assert($past(epoch_aead_ok));
-                a_ack_requires_complete: assert($past(epoch_complete));
-                a_ack_requires_clean: assert($past(epoch_clean));
-                a_ack_advances_one_epoch: assert(next_expected == ($past(next_expected) + M));
+                a_ack_advances_one_epoch: assert(next_expected == (f_prev_next_expected + M));
             end
 
-            if (next_expected != $past(next_expected)) begin
+            if (next_expected != f_prev_next_expected) begin
                 a_state_change_requires_ack: assert(ack_valid && epoch_commit_pulse);
             end
 
             if (nak_valid || security_drop_pulse) begin
-                a_no_advance_on_failure: assert(next_expected == $past(next_expected));
+                a_no_advance_on_failure: assert(next_expected == f_prev_next_expected);
             end
 
             if (security_drop_pulse) begin
-                a_drop_requires_tag: assert($past(epoch_tag_valid));
-                a_drop_requires_failed_aead: assert(!$past(epoch_aead_ok));
-                a_drop_requires_complete: assert($past(epoch_complete));
-                a_drop_requires_clean: assert($past(epoch_clean));
                 a_drop_is_not_nak: assert(!nak_valid);
             end
         end
