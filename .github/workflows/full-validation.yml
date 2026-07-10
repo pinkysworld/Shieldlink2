@@ -1,0 +1,64 @@
+name: Full validation
+
+on:
+  push:
+    branches: [main, implementation-validation]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  python-models:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip -r requirements.txt
+      - name: Unit-test models
+        run: PYTHONPATH=code python code/test_models.py -v
+      - name: Reproduce compact experiment set
+        run: |
+          mkdir -p ci-out traces
+          python code/generate_synthetic_trace.py --out traces/synthetic_mixed_workload.csv --transactions 800
+          python code/protocol_realism_experiments.py --out-dir ci-out --epochs 60 --seeds 4
+          PYTHONPATH=code python code/adaptive_policy_ablation.py --out-dir ci-out --seeds 4
+          python code/trace_replay_experiments.py --trace traces/synthetic_mixed_workload.csv --out ci-out/trace_replay_summary.csv --seeds 4
+      - name: Generate figures from checked-in results
+        run: python code/make_validation_plots.py --data-dir data --fig-dir ci-out/figures
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-validation-results
+          path: ci-out/
+
+  rtl-formal-synthesis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install open-source HDL tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog verilator yosys
+      - name: Verilator lint
+        run: verilator --lint-only --timing --Wno-fatal -Wall rtl/shieldlink_ctrl_modeB_sr.sv tb/tb_shieldlink_ctrl_modeB_sr.sv tb/tb_shieldlink_ctrl_modeB_sr_random.sv
+      - name: Deterministic smoke test
+        run: |
+          mkdir -p validation-out
+          iverilog -g2012 -s tb_shieldlink_ctrl_modeB_sr -o validation-out/tb_smoke rtl/shieldlink_ctrl_modeB_sr.sv tb/tb_shieldlink_ctrl_modeB_sr.sv
+          vvp validation-out/tb_smoke | tee validation-out/tb_smoke.log
+      - name: Randomized RTL regression
+        run: |
+          iverilog -g2012 -s tb_shieldlink_ctrl_modeB_sr_random -o validation-out/tb_random rtl/shieldlink_ctrl_modeB_sr.sv tb/tb_shieldlink_ctrl_modeB_sr_random.sv
+          vvp validation-out/tb_random | tee validation-out/tb_random.log
+      - name: Generic synthesis comparison
+        run: bash synth/run_yosys_synthesis.sh validation-out/synthesis
+      - name: iCE40 technology mapping
+        run: bash synth/run_ice40_synthesis.sh validation-out/ice40
+      - name: Bounded Yosys SAT formal proof
+        run: bash formal/run_yosys_formal.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rtl-formal-synthesis-results
+          path: |
+            validation-out/
+            formal/out/
