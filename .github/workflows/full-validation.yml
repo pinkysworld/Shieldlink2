@@ -22,6 +22,7 @@ jobs:
           mkdir -p ci-out traces
           python code/generate_synthetic_trace.py --out traces/synthetic_mixed_workload.csv --transactions 800
           python code/protocol_realism_experiments.py --out-dir ci-out --epochs 60 --seeds 4
+          PYTHONPATH=code python code/baseline_comparison.py --out ci-out/baseline_comparison.csv --epochs 60 --seeds 4
           PYTHONPATH=code python code/adaptive_policy_ablation.py --out-dir ci-out --seeds 4
           python code/trace_replay_experiments.py --trace traces/synthetic_mixed_workload.csv --out ci-out/trace_replay_summary.csv --seeds 4
       - name: Generate figures from reproduced results
