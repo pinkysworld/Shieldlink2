@@ -149,12 +149,6 @@ module shieldlink_ctrl_modeB_sr #(
         f_prev_commit_condition <= commit_condition;
         f_prev_drop_condition <= drop_condition;
 
-        if (!f_history_valid[0]) begin
-            assume(!rst_n);
-        end else begin
-            assume(rst_n);
-        end
-
         if (f_history_valid[1]) begin
             a_no_ack_nak_overlap: assert(!(ack_valid && nak_valid));
             a_no_ack_security_overlap: assert(!(ack_valid && security_drop_pulse));
