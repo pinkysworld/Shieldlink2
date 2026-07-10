@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+title: "ShieldLink-SR: Selective-Retry Epoch Authentication for Secure Chiplet Interconnects"
+message: "If you use these artifacts, please cite this repository and the original ShieldLink paper when available."
+type: software
+authors:
+  - family-names: Nguyen
+    given-names: "Michél"
+repository-code: "https://github.com/pinkysworld/Shieldlink2"
+license: MIT
+version: "0.1.0-preprint-artifacts"
+date-released: "2026-07-10"
+keywords:
+  - chiplet interconnects
+  - authenticated encryption
+  - ARQ
+  - selective retry
+  - SystemVerilog
+  - Yosys
