@@ -1,0 +1,28 @@
+name: yosys-synthesis
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  synth:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Yosys
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yosys
+
+      - name: Run synthesis comparison
+        run: |
+          bash synth/run_yosys_synthesis.sh synth/out
+
+      - name: Upload synthesis outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: shieldlink-sr-yosys-synthesis
+          path: synth/out
