@@ -39,7 +39,7 @@ The offline oracle reached mean utility 0.9039. The strongest implementable test
 
 `code/trace_replay_experiments.py` accepts external CSV traces. `code/generate_synthetic_trace.py` creates a deterministic trace with coherence-like 64-byte messages, 256-byte packets, 4 KiB DMA transactions and 16 KiB bulk transactions.
 
-The generated trace is synthetic and trace-inspired, not measured CXL/UCIe data. At `M=32`, increasing outstanding epoch depth from 1 to 8 reduced packet-class mean latency from about 15,092 cycles to 754 cycles and peak queued transactions from 706 to 205 in this stress trace. Fairness does not improve monotonically, so scheduling remains a separate design problem.
+The trace replay now enforces a single shared serializer, so increasing outstanding epoch depth cannot multiply raw link bandwidth. The generated trace is synthetic and trace-inspired, not measured CXL/UCIe data. At `M=32`, increasing depth from 1 to 2 reduced packet-class mean latency from about 15,092 cycles to 13,849 cycles and peak queued transactions from 706 to 692. Depths 4 and 8 produced no further benefit in this configuration because serialization, rather than verification concurrency, became the bottleneck. Fairness does not improve monotonically, so scheduling remains a separate design problem. Compact results are in `data/trace_replay_M32_key_results.csv`.
 
 ## 4. RTL corrections and regression tests
 
