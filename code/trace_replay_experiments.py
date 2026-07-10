@@ -4,7 +4,9 @@
 Input CSV columns: arrival_cycle,flow_id,class,payload_bytes,deadline_cycles.
 The bundled generator creates a trace-inspired workload, not measured CXL/UCIe data.
 A single shared serializer enforces raw link bandwidth. Pipeline depth only allows
-verification and commit work to overlap with later serialized epochs.
+verification and commit work to overlap with later serialized epochs. Transactions
+larger than one epoch are split across successive epochs and complete only when
+the final chunk commits.
 """
 import argparse,csv,math,random,statistics as st
 from collections import deque,defaultdict
@@ -16,7 +18,8 @@ def load(path):
  return sorted(rows,key=lambda r:r['arrival_cycle'])
 
 def run(trace,m,depth,seed):
- rng=random.Random(seed);classes=sorted({r['class'] for r in trace});queues=defaultdict(deque);order=deque(classes);pending=deque(trace)
+ rng=random.Random(seed);classes=sorted({r['class'] for r in trace});queues=defaultdict(deque);order=deque(classes)
+ pending=deque({**r,'_remaining_frames':math.ceil(r['payload_bytes']/FRAME_PAYLOAD)} for r in trace)
  inflight=[];done=[];now=0.;link_free=0.;peak=0
  def admit():
   nonlocal peak
@@ -38,11 +41,10 @@ def run(trace,m,depth,seed):
    if not candidates:break
    now=max(now,min(candidates));continue
   batch=[];frames=0
-  while queues[picked]:
-   t=queues[picked][0];need=math.ceil(t['payload_bytes']/FRAME_PAYLOAD)
-   if frames and frames+need>m:break
-   queues[picked].popleft();batch.append(t);frames+=need
-   if frames>=m:break
+  while queues[picked] and frames<m:
+   t=queues[picked][0];take=min(t['_remaining_frames'],m-frames);frames+=take;t['_remaining_frames']-=take
+   if t['_remaining_frames']==0:queues[picked].popleft();batch.append(t)
+   else:break
   peak=max(peak,sum(len(q) for q in queues.values()));failed=sum(1 for _ in range(frames) if rng.random()<.01)
   wire=frames*FRAME_WIRE+TAG+CTRL+failed*(FRAME_WIRE+TAG+CTRL)
   start=max(now,link_free);link_finish=start+wire/W;commit=link_finish+VERIFY+failed*64
