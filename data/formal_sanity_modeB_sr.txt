@@ -1,0 +1,9 @@
+ShieldLink Mode B-SR bounded safety sanity check
+M=4, SEQ_MOD=8, MAX_DEPTH=10
+states_explored=479
+transitions_explored=4210
+ack_events_checked=2
+nak_events_checked=838
+security_drop_events_checked=2
+max_received_slots_in_state=4
+result=PASS
