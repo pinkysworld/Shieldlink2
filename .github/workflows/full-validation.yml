@@ -24,8 +24,8 @@ jobs:
           python code/protocol_realism_experiments.py --out-dir ci-out --epochs 60 --seeds 4
           PYTHONPATH=code python code/adaptive_policy_ablation.py --out-dir ci-out --seeds 4
           python code/trace_replay_experiments.py --trace traces/synthetic_mixed_workload.csv --out ci-out/trace_replay_summary.csv --seeds 4
-      - name: Generate figures from checked-in results
-        run: python code/make_validation_plots.py --data-dir data --fig-dir ci-out/figures
+      - name: Generate figures from reproduced results
+        run: python code/make_validation_plots.py --data-dir ci-out --fig-dir ci-out/figures
       - uses: actions/upload-artifact@v4
         with:
           name: python-validation-results
