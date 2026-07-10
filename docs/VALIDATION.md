@@ -63,14 +63,16 @@ The RTL includes assertions under `FORMAL`. `formal/run_yosys_formal.sh` runs a 
 
 `formal/modeB_sr.sby` is included for environments with SymbiYosys and Boolector.
 
-## 6. Synthesis and CI
+## 6. Synthesis, timing proxy, and CI
 
-`.github/workflows/full-validation.yml` runs Python tests, compact experiment reproduction, Verilator lint, deterministic and randomized RTL simulations, generic Yosys synthesis, iCE40 technology mapping and bounded Yosys SAT formal checking.
+`.github/workflows/full-validation.yml` runs Python tests, compact experiment reproduction, Verilator lint, deterministic and randomized RTL simulations, generic Yosys synthesis, iCE40 technology mapping, bounded Yosys SAT formal checking, and an open nextpnr place-and-route experiment.
 
-The iCE40 output is technology-mapped synthesis, not place-and-route timing. Maximum frequency, power and routing congestion still require a concrete FPGA device, pin constraints and nextpnr or a vendor flow.
+`rtl/top_ice40_timing_sr.sv` deliberately uses a reduced 32-bit frame input and 16-bit sequence number while retaining `M=32`. This allows the control path to fit a practical open-source FPGA top-level interface. `synth/run_ice40_pnr.sh` targets an iCE40 HX8K CT256 and reports nextpnr timing. The result is a control-path timing proxy, not post-route validation of the reference 256-byte datapath, integrated AEAD engine, PHY, or full replay-buffer macro.
+
+Generic and technology-mapped synthesis can also optimize away storage that has no observable read path in the control-plane skeleton. Exact reference buffering therefore remains separately accounted for by the resource-sizing scripts. A final implementation paper should integrate a real buffer interface and cipher pipeline before making full PPA claims.
 
 ## Claim boundary
 
 > Under the evaluated abstract channel, workload and adversarial schedules, selective repair preserves authenticated epoch commit and avoids the retransmission collapse of flush-all Mode B with bitmap-scale control state.
 
-This does not establish measured CXL/UCIe performance, full cryptographic security, liveness against an unconstrained active attacker, post-route FPGA timing or ASIC PPA.
+This does not establish measured CXL/UCIe performance, full cryptographic security, liveness against an unconstrained active attacker, post-route timing of the full reference datapath, or ASIC PPA.
