@@ -1,0 +1,10 @@
+Validation data generated locally on 2026-07-10 with Python 3.13.5.
+
+Commands:
+python3 code/protocol_realism_experiments.py --out-dir data --epochs 300 --seeds 20
+PYTHONPATH=code python3 code/adaptive_policy_ablation.py --out-dir data --seeds 20
+python3 code/trace_replay_experiments.py --trace traces/synthetic_mixed_workload.csv --out data/trace_replay_summary.csv --seeds 20
+PYTHONPATH=code python3 code/test_models.py -v
+python3 code/make_validation_plots.py --data-dir data --fig-dir figures
+
+All Python unit tests passed. Local Yosys, Icarus Verilog and Verilator binaries were unavailable, so HDL lint, simulation, synthesis and SAT-formal outputs are delegated to the GitHub Actions workflow and are not claimed as locally executed results.
