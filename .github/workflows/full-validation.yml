@@ -38,7 +38,7 @@ jobs:
       - name: Install open-source HDL tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y iverilog verilator yosys
+          sudo apt-get install -y iverilog verilator yosys nextpnr-ice40
       - name: Verilator lint
         run: verilator --lint-only --timing --Wno-fatal -Wall rtl/shieldlink_ctrl_modeB_sr.sv tb/tb_shieldlink_ctrl_modeB_sr.sv tb/tb_shieldlink_ctrl_modeB_sr_random.sv
       - name: Deterministic smoke test
@@ -54,6 +54,8 @@ jobs:
         run: bash synth/run_yosys_synthesis.sh validation-out/synthesis
       - name: iCE40 technology mapping
         run: bash synth/run_ice40_synthesis.sh validation-out/ice40
+      - name: Reduced-width iCE40 place and route timing proxy
+        run: bash synth/run_ice40_pnr.sh validation-out/ice40-pnr
       - name: Bounded Yosys SAT formal proof
         run: bash formal/run_yosys_formal.sh
       - uses: actions/upload-artifact@v4
