@@ -20,8 +20,8 @@ run_one() {
   {
     echo "read_verilog -sv ${sources[*]}"
     echo "hierarchy -check -top ${top}"
-    echo "proc; opt; fsm; opt; memory; opt"
-    echo "techmap; opt"
+    echo "proc; opt; fsm; opt"
+    echo "memory_dff; memory_collect; opt_clean"
     echo "stat"
   } > "$ys"
 
@@ -71,4 +71,4 @@ with out.open("w", newline="") as f:
 print(f"Wrote {out}")
 PY
 
-echo "Synthesis logs and summaries are in $OUT_DIR"
+echo "Structural synthesis logs and summaries are in $OUT_DIR"
