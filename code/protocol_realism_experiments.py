@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 LINK_BYTES_PER_CYCLE=8.0; HEADER_BYTES=16; CRC_BYTES=4; TAG_BYTES=12
-ACK_BYTES=8; NAK_BASE_BYTES=8; REPAIR_AUTH_BYTES=12; PROP_CYCLES=2.0
+ACK_BYTES=8; NAK_BASE_BYTES=8; PROP_CYCLES=2.0
 CRC_CYCLES=1.0; AEAD_CYCLES=8.0; REPAIR_SCHED_CYCLES=4.0; P_GOOD=1e-6
 
 def percentile(v,q):
@@ -32,7 +32,7 @@ class GilbertElliott:
     def __init__(self,pi_bad,beta,p_bad,seed):
         if not 0<=pi_bad<1: raise ValueError('pi_bad must be in [0,1)')
         self.rng=random.Random(seed); self.beta=beta; self.p_bad=p_bad
-        self.alpha=0.0 if pi_bad==0 else pi_bad*beta/(1-pi_bad); self.bad=self.rng.random()<pi_bad
+        self.alpha=0 if pi_bad==0 else pi_bad*beta/(1-pi_bad); self.bad=self.rng.random()<pi_bad
     def corrupt(self):
         c=self.rng.random()<(self.p_bad if self.bad else P_GOOD)
         if self.bad:
@@ -42,11 +42,13 @@ class GilbertElliott:
 
 @dataclass
 class RunResult:
-    payload_bytes:int; wire_bytes:int; elapsed_cycles:float; latencies:list[float]
+    offered_payload_bytes:int; delivered_payload_bytes:int; wire_bytes:int; elapsed_cycles:float; latencies:list[float]
     repair_rounds:list[int]; repair_frames:list[int]; security_drops:int=0; rejected_frames:int=0
     def summarize(self):
-        return {'goodput':self.payload_bytes/self.wire_bytes if self.wire_bytes else 0.0,
-        'throughput_payload_B_per_cycle':self.payload_bytes/self.elapsed_cycles if self.elapsed_cycles else 0.0,
+        return {'goodput':self.delivered_payload_bytes/self.wire_bytes if self.wire_bytes else 0.0,
+        'offered_efficiency':self.offered_payload_bytes/self.wire_bytes if self.wire_bytes else 0.0,
+        'delivery_ratio':self.delivered_payload_bytes/self.offered_payload_bytes if self.offered_payload_bytes else 0.0,
+        'throughput_payload_B_per_cycle':self.delivered_payload_bytes/self.elapsed_cycles if self.elapsed_cycles else 0.0,
         'p50_latency_cycles':percentile(self.latencies,.5),'p95_latency_cycles':percentile(self.latencies,.95),
         'p99_latency_cycles':percentile(self.latencies,.99),'p999_latency_cycles':percentile(self.latencies,.999),
         'max_latency_cycles':max(self.latencies,default=0.0),'avg_repair_rounds':stats.mean(self.repair_rounds) if self.repair_rounds else 0.0,
@@ -69,9 +71,9 @@ def select_faults(m,ch,adversary,round_index,rng):
 
 def run_mode_b(*,epochs,m,pi_bad,beta,p_bad,seed,selective,workload,timeout_cycles,tag_policy,pipeline_depth,adversary='none',max_repair_rounds=16,fec_t=0):
     ch=GilbertElliott(pi_bad,beta,p_bad,seed); rng=random.Random(seed^0x51E1EC7)
-    wire=payload=security_drops=rejected_frames=0; lats=[]; rounds=[]; repairs=[]; serial=0.0
+    wire=offered=delivered=security_drops=rejected_frames=0; lats=[]; rounds=[]; repairs=[]; serial=0.0
     for _ in range(epochs):
-        payload+=m*workload.payload_bytes_per_frame; parity=2*fec_t if fec_t else 0
+        epoch_payload=m*workload.payload_bytes_per_frame; offered+=epoch_payload; parity=2*fec_t if fec_t else 0
         iw=epoch_wire_bytes(m)+parity*(HEADER_BYTES+256+CRC_BYTES); wire+=iw; serial+=iw/LINK_BYTES_PER_CYCLE
         lat=iw/LINK_BYTES_PER_CYCLE+AEAD_CYCLES+PROP_CYCLES
         failed,tag_attack,rejected=select_faults(m,ch,adversary,0,rng); rejected_frames+=rejected
@@ -90,19 +92,20 @@ def run_mode_b(*,epochs,m,pi_bad,beta,p_bad,seed,selective,workload,timeout_cycl
             if adversary=='repeat_repair': failed.add(0)
         if failed: security_drops+=1; lat+=timeout_cycles
         elif tag_attack: security_drops+=1; lat+=timeout_cycles+AEAD_CYCLES
-        else: wire+=ACK_BYTES; serial+=ACK_BYTES/LINK_BYTES_PER_CYCLE; lat+=ctrl_cycles(ACK_BYTES)
+        else:
+            delivered+=epoch_payload; wire+=ACK_BYTES; serial+=ACK_BYTES/LINK_BYTES_PER_CYCLE; lat+=ctrl_cycles(ACK_BYTES)
         lats.append(lat); rounds.append(rr); repairs.append(rf)
     elapsed=max(serial/max(1,pipeline_depth)+epochs*(AEAD_CYCLES+PROP_CYCLES)/max(1,pipeline_depth),max(lats,default=0.0))
-    return RunResult(payload,wire,elapsed,lats,rounds,repairs,security_drops,rejected_frames)
+    return RunResult(offered,delivered,wire,elapsed,lats,rounds,repairs,security_drops,rejected_frames)
 
 def run_mode_a(*,frames,pi_bad,beta,p_bad,seed,workload,timeout_cycles,adversary='none',fec_t=0):
     ch=GilbertElliott(pi_bad,beta,p_bad,seed); fb=HEADER_BYTES+256+CRC_BYTES+TAG_BYTES
-    wire=payload=security_drops=rejected=0; elapsed=0.0; lats=[]; rounds=[]; repairs=[]; budget=0
+    wire=offered=delivered=security_drops=rejected=0; elapsed=0.0; lats=[]; rounds=[]; repairs=[]; budget=0
     for fi in range(frames):
         if fi%32==0:
             budget=fec_t
             if fec_t: pw=2*fec_t*fb; wire+=pw; elapsed+=pw/LINK_BYTES_PER_CYCLE
-        payload+=workload.payload_bytes_per_frame; attempts=0; lat=0.0
+        offered+=workload.payload_bytes_per_frame; attempts=0; lat=0.0; dropped=False
         while True:
             attempts+=1; wire+=fb; lat+=fb/LINK_BYTES_PER_CYCLE+CRC_CYCLES+AEAD_CYCLES+PROP_CYCLES
             bad=ch.corrupt()
@@ -112,19 +115,20 @@ def run_mode_a(*,frames,pi_bad,beta,p_bad,seed,workload,timeout_cycles,adversary
             if bad and budget>0 and attempts==1:budget-=1;bad=False;lat+=AEAD_CYCLES
             if not bad:break
             lat+=timeout_cycles
-            if attempts>=16:security_drops+=1;break
-        if adversary=='tag_target' and fi%32==31:security_drops+=1
+            if attempts>=16:security_drops+=1;dropped=True;break
+        if adversary=='tag_target' and fi%32==31:security_drops+=1;dropped=True;lat+=timeout_cycles+AEAD_CYCLES
         if adversary in {'replay','reorder'} and fi%32==0:rejected+=1;wire+=fb;lat+=fb/LINK_BYTES_PER_CYCLE
-        wire+=ACK_BYTES;lat+=ctrl_cycles(ACK_BYTES);elapsed+=lat;lats.append(lat);rounds.append(max(0,attempts-1));repairs.append(max(0,attempts-1))
-    return RunResult(payload,wire,elapsed,lats,rounds,repairs,security_drops,rejected)
+        if not dropped:delivered+=workload.payload_bytes_per_frame;wire+=ACK_BYTES;lat+=ctrl_cycles(ACK_BYTES)
+        elapsed+=lat;lats.append(lat);rounds.append(max(0,attempts-1));repairs.append(max(0,attempts-1))
+    return RunResult(offered,delivered,wire,elapsed,lats,rounds,repairs,security_drops,rejected)
 
 def aggregate(rows,keys):
     groups={}
     for r in rows:groups.setdefault(tuple(r[k] for k in keys),[]).append(r)
-    metrics=['goodput','throughput_payload_B_per_cycle','p50_latency_cycles','p95_latency_cycles','p99_latency_cycles','p999_latency_cycles','max_latency_cycles','avg_repair_rounds','avg_repair_frames','peak_repair_frames','security_drops','rejected_frames']
+    metrics=['goodput','offered_efficiency','delivery_ratio','throughput_payload_B_per_cycle','p50_latency_cycles','p95_latency_cycles','p99_latency_cycles','p999_latency_cycles','max_latency_cycles','avg_repair_rounds','avg_repair_frames','peak_repair_frames','security_drops','rejected_frames']
     out=[]
-    for key,members in sorted(groups.items()):
-        row=dict(zip(keys,key));row['seeds']=len(members)
+    for name,members in sorted(groups.items()):
+        row=dict(zip(keys,name));row['seeds']=len(members)
         for metric in metrics:
             vals=[float(x[metric]) for x in members];row[metric+'_mean']=stats.mean(vals);row[metric+'_ci95']=ci95(vals)
         out.append(row)
