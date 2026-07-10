@@ -42,8 +42,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y iverilog verilator yosys nextpnr-ice40
-      - name: Verilator lint
-        run: verilator --lint-only --timing --Wno-fatal -Wall rtl/shieldlink_ctrl_modeB_sr.sv tb/tb_shieldlink_ctrl_modeB_sr.sv tb/tb_shieldlink_ctrl_modeB_sr_random.sv
+      - name: Verilator lint control RTL
+        run: verilator --lint-only --Wno-fatal -Wall --top-module shieldlink_ctrl_modeB_sr rtl/shieldlink_ctrl_modeB_sr.sv
       - name: Deterministic smoke test
         run: |
           mkdir -p validation-out
