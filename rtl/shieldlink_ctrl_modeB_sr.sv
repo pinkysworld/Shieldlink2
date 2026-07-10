@@ -133,29 +133,45 @@ module shieldlink_ctrl_modeB_sr #(
     end
 
 `ifdef FORMAL
-    logic f_past_valid = 1'b0;
+    // Two-cycle warm-up ensures every $past() sample below is defined after reset.
+    logic [1:0] f_history_valid = '0;
     always_ff @(posedge clk) begin
-        f_past_valid <= 1'b1;
-        if (!f_past_valid) begin
+        f_history_valid <= {f_history_valid[0], 1'b1};
+
+        if (!f_history_valid[0]) begin
             assume(!rst_n);
         end else begin
             assume(rst_n);
-            assert(!(ack_valid && nak_valid));
-            assert(!(ack_valid && security_drop_pulse));
-            assert(!(epoch_commit_pulse && epoch_repair_pulse));
+        end
+
+        if (f_history_valid[1]) begin
+            a_no_ack_nak_overlap: assert(!(ack_valid && nak_valid));
+            a_no_ack_security_overlap: assert(!(ack_valid && security_drop_pulse));
+            a_no_commit_repair_overlap: assert(!(epoch_commit_pulse && epoch_repair_pulse));
+            a_ack_is_commit: assert(ack_valid == epoch_commit_pulse);
+
             if (ack_valid) begin
-                assert($past(epoch_tag_valid));
-                assert($past(epoch_aead_ok));
-                assert($past(epoch_complete));
-                assert($past(epoch_clean));
-                assert(next_expected == $past(epoch_start_seq) + M);
+                a_ack_requires_tag: assert($past(epoch_tag_valid));
+                a_ack_requires_aead: assert($past(epoch_aead_ok));
+                a_ack_requires_complete: assert($past(epoch_complete));
+                a_ack_requires_clean: assert($past(epoch_clean));
+                a_ack_advances_one_epoch: assert(next_expected == ($past(next_expected) + M));
             end
+
             if (next_expected != $past(next_expected)) begin
-                assert($past(epoch_tag_valid && epoch_aead_ok && epoch_complete && epoch_clean));
+                a_state_change_requires_ack: assert(ack_valid && epoch_commit_pulse);
             end
+
+            if (nak_valid || security_drop_pulse) begin
+                a_no_advance_on_failure: assert(next_expected == $past(next_expected));
+            end
+
             if (security_drop_pulse) begin
-                assert($past(epoch_tag_valid && !epoch_aead_ok && epoch_complete && epoch_clean));
-                assert(!nak_valid);
+                a_drop_requires_tag: assert($past(epoch_tag_valid));
+                a_drop_requires_failed_aead: assert(!$past(epoch_aead_ok));
+                a_drop_requires_complete: assert($past(epoch_complete));
+                a_drop_requires_clean: assert($past(epoch_clean));
+                a_drop_is_not_nak: assert(!nak_valid);
             end
         end
     end
